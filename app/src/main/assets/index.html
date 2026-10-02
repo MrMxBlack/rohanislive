@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no"><title>Underground Escape LIVE V3</title>
+<style>html,body{margin:0;height:100%;overflow:hidden;background:#020304;font-family:Arial,sans-serif}#wrap{height:100%;display:grid;place-items:center}canvas{height:100vh;width:min(56.25vh,100vw);display:block;background:#08090a;touch-action:none;box-shadow:0 0 40px #000}#hint{position:fixed;bottom:7px;left:0;right:0;text-align:center;color:#777;font-size:10px;pointer-events:none}</style></head>
+<body><div id="wrap"><canvas id="game" width="540" height="960"></canvas></div><div id="hint">AUTO 24/7 MODE • TAP LEFT/RIGHT TO BOOST DIRECTION</div>
+<script>
+const c=document.getElementById('game'),ctx=c.getContext('2d'),W=540,H=960;
+let seed=(Date.now()^Math.floor(Math.random()*1e9))>>>0, t=0, attempt=1, progress=12, hp=100, zone=0, shake=0, banner='',bannerT=0, eventT=0, cycle=0, viewers=184;
+const ZONES=['DARK SOIL','SPIDER PASSAGE','SNAKE TUNNEL','UNDERGROUND RIVER','ROOT CHAMBER','INSECT NEST','COLLAPSE ZONE','ANCIENT EXIT'];
+const EVENTS=['CAVE COLLAPSE','FLOOD RUSH','GIANT ROOT','FALSE EXIT','LIGHTS OUT','GIANT SPIDER','ROCKFALL'];
+const TYPES=['snake','spider','scorpion','beetle','bat'];
+let player={x:270,y:735,vx:0,attack:0,boost:0,inv:0};
+let foes=[],rocks=[],drops=[],parts=[],texts=[];
+function rnd(n=1){seed=(seed*1664525+1013904223)>>>0;return seed/4294967296*n}
+function pick(a){return a[Math.floor(rnd(a.length))]}
+function say(s){banner=s;bannerT=90;shake=7}
+function spawnFoe(force){let type=force||pick(TYPES);foes.push({type,x:65+rnd(410),y:125+rnd(420),speed:.65+rnd(1.15),hp:type==='bat'?1:2,phase:rnd(6.28),cool:rnd(60)})}
+function spawnRock(){rocks.push({x:65+rnd(410),y:100+rnd(610),r:12+rnd(24),rot:rnd(6.28),vy:.8+rnd(1.3)})}
+function burst(x,y,n=12,kind='dust'){for(let i=0;i<n;i++)parts.push({x,y,vx:(rnd(2)-1)*4,vy:(rnd(2)-1)*4,l:25+rnd(35),kind})}
+function floatText(s,x,y){texts.push({s,x,y,l:55})}
+function newAttempt(reason){attempt++;cycle++;progress=Math.max(5,progress-18);hp=100;player={x:270,y:735,vx:0,attack:0,boost:0,inv:0};foes=[];rocks=[];eventT=0;zone=(zone+1)%ZONES.length;say(reason||'NEW TUNNEL');for(let i=0;i<2+Math.floor(rnd(2));i++)spawnFoe();for(let i=0;i<4;i++)spawnRock()}
+function triggerEvent(){let e=pick(EVENTS);eventT=135;say(e);if(e==='FLOOD RUSH')progress=Math.max(0,progress-7);if(e==='FALSE EXIT')progress=Math.max(0,progress-13);if(e==='CAVE COLLAPSE'||e==='ROCKFALL'){progress=Math.max(0,progress-9);burst(270,430,45)}if(e==='LIGHTS OUT')eventT=180;if(e==='GIANT SPIDER')spawnFoe('spider');}
+function update(){
+ t++; viewers=Math.max(72,Math.min(999,viewers+Math.round(rnd(9)-4))); if(t%70===0)spawnFoe(); if(t%82===0)spawnRock(); if(t%480===0)triggerEvent();
+ progress+=0.095+Math.min(0.06,cycle*.003); if(progress>=100){say(zone===7?'ESCAPE?!':'FALSE EXIT — KEEP RUNNING');burst(270,160,50,'spark');progress=zone===7?64:7;zone=(zone+1)%ZONES.length;foes=[];rocks=[];for(let i=0;i<3;i++)spawnFoe()}
+ // autonomous steering: center drift, dodge nearest threat, dodge rocks
+ let target=270+Math.sin(t/47)*125; let nearest=999, nf=null;
+ for(const f of foes){let d=Math.hypot(f.x-player.x,f.y-player.y);if(d<nearest){nearest=d;nf=f}}
+ if(nf&&nearest<145)target += player.x<nf.x?-110:110;
+ for(const r of rocks){if(r.y>600&&Math.abs(r.x-player.x)<65)target += player.x<r.x?-85:85}
+ if(player.boost>0)target += player.vx*10;
+ target=Math.max(70,Math.min(470,target)); player.vx+=(target-player.x)*.012;player.vx*=.89;player.x+=player.vx*.9;player.x=Math.max(45,Math.min(495,player.x));
+ player.attack--;player.boost=Math.max(0,player.boost-1);player.inv=Math.max(0,player.inv-1);
+ for(const f of foes){f.y+=f.speed;f.x+=Math.sin(t/19+f.phase)*1.35;f.cool--;if(f.y>790){f.y=125-rnd(70);f.x=65+rnd(410)}let d=Math.hypot(f.x-player.x,f.y-player.y);if(d<66&&player.inv<=0){hp-=4;player.inv=38;burst(player.x,player.y,10,'hit');floatText('-4',player.x,player.y-60);if(hp<=0){say('CAUGHT!');newAttempt('ESCAPE ATTEMPT FAILED')}}}
+ // auto attack closest foe
+ if(player.attack<=0){let targetF=foes.filter(f=>Math.hypot(f.x-player.x,f.y-player.y)<170).sort((a,b)=>a.y-b.y)[0];if(targetF){player.attack=28;targetF.hp--;burst(targetF.x,targetF.y,9,'spark');floatText('HIT',targetF.x,targetF.y-25);if(targetF.hp<=0){foes.splice(foes.indexOf(targetF),1);progress+=1.8}}}
+ for(let i=rocks.length-1;i>=0;i--){let r=rocks[i];r.y+=r.vy;if(r.y>820){rocks.splice(i,1);continue}if(Math.abs(r.x-player.x)<r.r+18&&Math.abs(r.y-player.y)<52&&player.inv<=0){hp-=6;progress=Math.max(0,progress-2);player.inv=25;player.x+=(player.x<r.x?-38:38);burst(r.x,r.y,15);floatText('-6',r.x,r.y-20)}}
+ for(let i=parts.length-1;i>=0;i--){let p=parts[i];p.x+=p.vx;p.y+=p.vy;p.vy+=.05;p.l--;if(p.l<=0)parts.splice(i,1)}
+ for(let i=texts.length-1;i>=0;i--){let q=texts[i];q.y-=.5;q.l--;if(q.l<=0)texts.splice(i,1)}
+ if(bannerT>0)bannerT--;if(eventT>0)eventT--;shake=Math.max(0,shake-.25)
+}
+function cave(){let grad=ctx.createLinearGradient(0,0,0,H);grad.addColorStop(0,'#07090a');grad.addColorStop(.55,eventT&&banner==='FLOOD RUSH'?'#071820':'#17110d');grad.addColorStop(1,'#241811');ctx.fillStyle=grad;ctx.fillRect(0,0,W,H);
+ ctx.fillStyle='#2a2019';ctx.beginPath();ctx.moveTo(25,0);ctx.lineTo(515,0);ctx.lineTo(430,H);ctx.lineTo(110,H);ctx.closePath();ctx.fill();
+ for(let i=0;i<18;i++){let y=(i*70+(t*2.1)%70)-10,s=Math.sin(i*2.3+t/65)*18;ctx.fillStyle=i%2?'#3a2b20':'#30241c';ctx.fillRect(68+s,y,5,42);ctx.fillRect(467-s,y,5,42)}
+ // tunnel floor
+ ctx.fillStyle='#17100c';ctx.fillRect(105,620,330,340);
+ if(eventT&&banner==='FLOOD RUSH'){ctx.fillStyle='rgba(26,135,175,.34)';ctx.fillRect(105,560,330,400);for(let i=0;i<10;i++){ctx.strokeStyle='rgba(140,230,255,.25)';ctx.beginPath();ctx.moveTo(105,600+i*34);ctx.lineTo(435,600+i*34);ctx.stroke()}}
+ if(zone===1){ctx.strokeStyle='rgba(220,220,220,.17)';ctx.lineWidth=2;for(let i=0;i<6;i++){ctx.beginPath();ctx.arc(90+i*75,190,65,0,Math.PI*2);ctx.stroke()}}
+ if(zone===4){ctx.strokeStyle='rgba(100,72,38,.8)';ctx.lineWidth=8;for(let i=0;i<7;i++){ctx.beginPath();ctx.moveTo(110+i*55,600);ctx.quadraticCurveTo(150+i*40,430,125+i*50,270);ctx.stroke()}}
+}
+function drawFoe(f){let col={snake:'#91b84c',spider:'#80604d',scorpion:'#b07443',beetle:'#526f68',bat:'#77698c'}[f.type];ctx.save();ctx.translate(f.x,f.y);ctx.strokeStyle=col;ctx.fillStyle=col;ctx.lineWidth=5;
+ if(f.type==='snake'){ctx.lineWidth=12;ctx.beginPath();for(let i=0;i<8;i++){let xx=-40+i*11,yy=Math.sin(i+t/7)*9; i?ctx.lineTo(xx,yy):ctx.moveTo(xx,yy)}ctx.stroke();ctx.fillStyle='#dceaa5';ctx.beginPath();ctx.arc(42,-2,3,0,7);ctx.fill()}
+ else if(f.type==='spider'||f.type==='scorpion'){ctx.beginPath();ctx.arc(0,0,20,0,7);ctx.fill();for(let i=0;i<8;i++){let a=i*Math.PI/4;ctx.beginPath();ctx.moveTo(Math.cos(a)*12,Math.sin(a)*12);ctx.lineTo(Math.cos(a)*45,Math.sin(a)*34);ctx.stroke()}}
+ else if(f.type==='beetle'){ctx.beginPath();ctx.ellipse(0,0,25,18,0,0,7);ctx.fill();ctx.strokeStyle='#1b2524';ctx.beginPath();ctx.moveTo(0,-17);ctx.lineTo(0,17);ctx.stroke()}
+ else {ctx.beginPath();ctx.ellipse(0,0,21,14,0,0,7);ctx.fill();ctx.beginPath();ctx.moveTo(-10,-3);ctx.lineTo(-42,-28);ctx.lineTo(-23,7);ctx.fill();ctx.beginPath();ctx.moveTo(10,-3);ctx.lineTo(42,-28);ctx.lineTo(23,7);ctx.fill()}
+ ctx.restore()}
+function drawPlayer(){ctx.save();ctx.translate(player.x,player.y);ctx.globalAlpha=player.inv%6<3?.45:1;ctx.fillStyle='#d7b38a';ctx.beginPath();ctx.arc(0,-40,16,0,7);ctx.fill();ctx.fillStyle='#29435d';ctx.fillRect(-18,-24,36,48);ctx.strokeStyle='#182535';ctx.lineWidth=9;ctx.beginPath();ctx.moveTo(-8,24);ctx.lineTo(-19,58);ctx.moveTo(8,24);ctx.lineTo(19,58);ctx.stroke();ctx.strokeStyle='#d7b38a';ctx.lineWidth=7;ctx.beginPath();ctx.moveTo(-13,-5);ctx.lineTo(-31,18);ctx.moveTo(13,-5);ctx.lineTo(31,18);ctx.stroke();if(player.attack>0){ctx.strokeStyle='#fff1ad';ctx.lineWidth=5;ctx.beginPath();ctx.arc(34,8,31,-1,1);ctx.stroke()}ctx.restore()}
+function draw(){ctx.save();if(shake)ctx.translate((rnd(2)-1)*shake,(rnd(2)-1)*shake);cave();
+ // exit door ahead, moves subtly to create progress illusion
+ let ey=125+Math.sin(t/17)*4;ctx.fillStyle='#0c0d0d';ctx.fillRect(182,ey,176,86);ctx.strokeStyle=progress>84?'#e6d27d':'#5c5c5c';ctx.lineWidth=8;ctx.strokeRect(182,ey,176,86);ctx.fillStyle=progress>84?'#fff0a6':'#999';ctx.font='bold 26px Arial';ctx.textAlign='center';ctx.fillText('EXIT',270,ey+54);
+ rocks.forEach(r=>{ctx.save();ctx.translate(r.x,r.y);ctx.rotate(r.rot);ctx.fillStyle='#51473f';ctx.beginPath();ctx.arc(0,0,r.r,0,7);ctx.fill();ctx.restore()});foes.forEach(drawFoe);drawPlayer();
+ parts.forEach(p=>{ctx.globalAlpha=Math.max(0,p.l/50);ctx.fillStyle=p.kind==='hit'?'#ff5b4d':p.kind==='spark'?'#ffe9a0':'#9c866e';ctx.fillRect(p.x,p.y,4,4)});ctx.globalAlpha=1;
+ texts.forEach(q=>{ctx.fillStyle='#fff1a5';ctx.font='bold 13px Arial';ctx.textAlign='center';ctx.fillText(q.s,q.x,q.y)});
+ // top HUD
+ ctx.fillStyle='rgba(0,0,0,.78)';ctx.fillRect(15,15,510,120);ctx.fillStyle='#ff3434';ctx.beginPath();ctx.arc(34,40,7,0,7);ctx.fill();ctx.fillStyle='#fff';ctx.font='bold 20px Arial';ctx.textAlign='left';ctx.fillText('LIVE • UNDERGROUND ESCAPE',51,47);ctx.font='13px Arial';ctx.fillStyle='#aaa';ctx.fillText('ATTEMPT '+attempt+'  •  '+ZONES[zone],25,72);ctx.fillText('WATCHING NOW  '+viewers,350,72);
+ ctx.fillStyle='#292929';ctx.fillRect(25,91,490,13);ctx.fillStyle='#e7d47c';ctx.fillRect(25,91,490*progress/100,13);ctx.fillStyle='#fff';ctx.font='bold 11px Arial';ctx.fillText('ESCAPE '+Math.floor(progress)+'%',28,116);
+ // danger/health
+ ctx.fillStyle='#292929';ctx.fillRect(25,128,130,5);ctx.fillStyle='#65c779';ctx.fillRect(25,128,130*Math.max(0,hp)/100,5);ctx.fillStyle='#aaa';ctx.font='10px Arial';ctx.fillText('SURVIVAL',160,133);
+ if(eventT){ctx.fillStyle='rgba(95,18,12,.82)';ctx.fillRect(50,172,440,50);ctx.fillStyle='#fff';ctx.textAlign='center';ctx.font='bold 22px Arial';ctx.fillText(banner,270,205)}
+ if(bannerT&& !eventT){ctx.fillStyle='rgba(0,0,0,.65)';ctx.fillRect(55,770,430,68);ctx.fillStyle='#fff';ctx.textAlign='center';ctx.font='bold 23px Arial';ctx.fillText(banner,270,812)}
+ ctx.fillStyle='rgba(0,0,0,.55)';ctx.fillRect(24,884,492,48);ctx.fillStyle='#aaa';ctx.textAlign='center';ctx.font='11px Arial';ctx.fillText('AUTO ESCAPE ENGINE  •  RANDOM EVENTS  •  24/7 MODE',270,913);
+ ctx.restore()}
+function loop(){update();draw();requestAnimationFrame(loop)}
+for(let i=0;i<3;i++)spawnFoe();for(let i=0;i<5;i++)spawnRock();
+c.addEventListener('pointerdown',e=>{let r=c.getBoundingClientRect();let left=e.clientX<r.left+r.width/2;player.boost=42;player.vx+=(left?-7:7);player.x+=left?-18:18;burst(player.x,player.y,10,'spark')});
+loop();
+</script></body></html>
